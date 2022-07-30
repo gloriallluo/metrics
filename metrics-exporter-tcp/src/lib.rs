@@ -264,10 +264,10 @@ impl TcpBuilder {
     ///
     /// An error will be returned if there's an issue with creating the TCP server or with
     /// installing the recorder as the global recorder.
-    pub fn install(self) -> Result<(), Error> {
-        let recorder = self.build()?;
+    pub fn install(self) -> Result<SocketAddr, Error> {
+        let (recorder, listen_addr) = self.build()?;
         metrics::set_boxed_recorder(Box::new(recorder))?;
-        Ok(())
+        Ok(listen_addr)
     }
 
     /// Builds and installs the exporter, but returns the recorder.
@@ -275,7 +275,7 @@ impl TcpBuilder {
     /// In most cases, users should prefer to use [`TcpBuilder::install`] to create and install
     /// the recorder and exporter automatically for them. If a caller is combining recorders,
     /// however, then this method allows the caller the flexibility to do so.
-    pub fn build(self) -> Result<TcpRecorder, Error> {
+    pub fn build(self) -> Result<(TcpRecorder, SocketAddr), Error> {
         let buffer_size = self.buffer_size;
         let (tx, rx) = match buffer_size {
             None => unbounded(),
@@ -286,13 +286,14 @@ impl TcpBuilder {
         let waker = Waker::new(poll.registry(), WAKER)?;
 
         let mut listener = TcpListener::bind(self.listen_addr)?;
+        let local_addr = listener.local_addr()?;
         poll.registry().register(&mut listener, LISTENER, Interest::READABLE)?;
 
         let state = Arc::new(State::new(waker, tx));
         let recorder = TcpRecorder { state: state.clone() };
 
         thread::spawn(move || run_transport(poll, listener, rx, state, buffer_size));
-        Ok(recorder)
+        Ok((recorder, local_addr))
     }
 }
 
