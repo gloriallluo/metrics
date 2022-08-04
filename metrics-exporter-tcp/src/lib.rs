@@ -552,6 +552,7 @@ fn drive_connection(
             Ok(_) => continue,
             Err(ref e) if would_block(e) => return false,
             Err(ref e) if interrupted(e) => return drive_connection(conn, wbuf, msgs),
+            Err(ref e) if broken_pipe(e) => return true,
             Err(e) => {
                 error!(?conn, error = %e, "write failed");
                 return true;
@@ -619,4 +620,8 @@ fn would_block(err: &io::Error) -> bool {
 
 fn interrupted(err: &io::Error) -> bool {
     err.kind() == io::ErrorKind::Interrupted
+}
+
+fn broken_pipe(err: &io::Error) -> bool {
+    err.kind() == io::ErrorKind::BrokenPipe
 }
